@@ -1,2 +1,2 @@
 # sai
-Starcraft 2 AI bot
+**S**tarcraft 2 **AI** bot
