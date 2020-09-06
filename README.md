@@ -1,2 +1,2 @@
 # sai
-**S**tarcraft 2 **AI** bot
+**S**tarCraft 2 **AI** bot
