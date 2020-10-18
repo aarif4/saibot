@@ -1,4 +1,5 @@
 import sc2
+import random
 
 
 class Protoss(sc2.BotAI):
@@ -12,8 +13,9 @@ class Protoss(sc2.BotAI):
         await self.increase_supply_cap()
         await self.build_worker_units()
         await self.build_vespene_gas_structure()
+        await self.build_townhall_structure()
 
-
+        
     async def build_worker_units(self):
         townhall_unitid = sc2.constants.NEXUS
         worker_unitid   = sc2.constants.PROBE
@@ -50,5 +52,14 @@ class Protoss(sc2.BotAI):
                 if worker is None:
                     break
                 
-                if not self.structures(vgs_unitid).closer_than(1, vg_geyser).exists:
+                if not self.structures(vgs_unitid).closer_than(1, vg_geyser).exists and not self.already_pending(vgs_unitid):
                     worker.build(vgs_unitid, vg_geyser)
+
+
+    async def build_townhall_structure(self):
+        MAX_NO_TOWNHALLS = 3
+        townhall_unitid = sc2.constants.NEXUS
+        
+        if self.structures(townhall_unitid).amount < MAX_NO_TOWNHALLS and self.can_afford(townhall_unitid) and not self.already_pending(townhall_unitid):
+            await self.expand_now()
+
