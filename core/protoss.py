@@ -1,5 +1,7 @@
 import sc2
 import random
+import cv2 # pip install opencv-python
+import numpy as np
 
 
 class Protoss(sc2.BotAI):
@@ -15,6 +17,7 @@ class Protoss(sc2.BotAI):
     async def on_step(self, iteration: int):
         self.iteration = iteration
         #print(self.iteration/self.iterations_per_minute)
+        await self.scout()
         await self.distribute_workers()
         await self.increase_supply_cap()
         await self.build_worker_units()
@@ -23,8 +26,44 @@ class Protoss(sc2.BotAI):
         await self.build_combat_structures()
         await self.train_combat_units()
         await self.attack_enemy()
-        
 
+
+    async def scout(self):
+        scout_unitid = sc2.constants.OBSERVER
+        scout_bldg_unitid = sc2.constants.ROBOTICSFACILITY
+
+        if len(self.units(scout_unitid)) > 0:
+            scout = self.units(scout_unitid)[0]
+            if scout.is_idle:
+                enemy_location = self.enemy_start_locations[0]
+                move_to = self.ranodm_location_variance(enemy_location)
+                scout.move(move_to)
+        else:
+            for rf in self.structures(scout_bldg_unitid).ready:
+                if rf.is_idle:
+                    if self.can_afford(scout_unitid) and self.supply_left > 0:
+                        rf.train(scout_unitid)
+
+
+    def ranodm_location_variance(self,enemy_start_location):
+        x = enemy_start_location[0]
+        y = enemy_start_location[1]
+
+        x += ((random.randrange(-20,20))/100) * enemy_start_location[0]
+        y += ((random.randrange(-20,20))/100) * enemy_start_location[1]
+
+        if x < 0:
+            x = 0
+        if y < 0:
+            y = 0
+        if x > self.game_info.map_size[0]:
+            x = self.game_info.map_size[0]
+        if y > self.game_info.map_size[1]:
+            y = self.game_info.map_size[1]
+
+        go_to = sc2.position.Point2(sc2.position.Pointlike((x,y)))
+        return go_to
+        
     async def build_worker_units(self):
         townhall_unitid = sc2.constants.NEXUS
         worker_unitid   = sc2.constants.PROBE
@@ -77,21 +116,27 @@ class Protoss(sc2.BotAI):
     async def build_combat_structures(self):
         supply_unitid = sc2.constants.PYLON
         combat_bldg_unitid = sc2.constants.GATEWAY
-        combat_bldg_addon_unitid = sc2.constants.CYBERNETICSCORE
+        combat_bldg_addon1_unitid = sc2.constants.CYBERNETICSCORE
         combat_bldg_addon2_unitid = sc2.constants.STARGATE
+        combat_bldg_addon3_unitid = sc2.constants.ROBOTICSFACILITY
+        
 
         if self.structures(supply_unitid).ready.exists:
             target_supply = self.structures(supply_unitid).ready.random
-            if self.structures(combat_bldg_unitid).ready.exists and not self.structures(combat_bldg_addon_unitid):
-                if self.can_afford(combat_bldg_addon_unitid) and not self.already_pending(combat_bldg_addon_unitid):
-                    await self.build(combat_bldg_addon_unitid, near=target_supply)
-            elif len(self.structures(combat_bldg_unitid)) < ((self.iteration / self.iterations_per_minute) / 2):
+            if self.structures(combat_bldg_unitid).ready.exists and not self.structures(combat_bldg_addon1_unitid):
+                if self.can_afford(combat_bldg_addon1_unitid) and not self.already_pending(combat_bldg_addon1_unitid):
+                    await self.build(combat_bldg_addon1_unitid, near=target_supply)
+            elif len(self.structures(combat_bldg_unitid)) < 1:
                 if self.can_afford(combat_bldg_unitid) and not self.already_pending(combat_bldg_unitid):
                     await self.build(combat_bldg_unitid, near=target_supply)
-            if self.structures(combat_bldg_addon_unitid).ready.exists:
-                if len(self.structures(combat_bldg_addon2_unitid)) < ((self.iteration / self.iterations_per_minute)/2):
+            if self.structures(combat_bldg_addon1_unitid).ready.exists:
+                if len(self.structures(combat_bldg_addon2_unitid)) < ((self.iteration / self.iterations_per_minute)):
                     if self.can_afford(combat_bldg_addon2_unitid) and not self.already_pending(combat_bldg_addon2_unitid):
                         await self.build(combat_bldg_addon2_unitid, near=target_supply)
+            if self.structures(combat_bldg_addon1_unitid).ready.exists:
+                if len(self.structures(combat_bldg_addon3_unitid)) < 1:
+                    if self.can_afford(combat_bldg_addon3_unitid) and not self.already_pending(combat_bldg_addon3_unitid):
+                        await self.build(combat_bldg_addon3_unitid, near=target_supply)
 
 
     async def train_combat_units(self):
@@ -101,11 +146,6 @@ class Protoss(sc2.BotAI):
         basic_combat_unit = sc2.constants.STALKER
         arial_combat_unit = sc2.constants.VOIDRAY
         
-        for gw in self.structures(combat_bldg_unitid).ready:
-            if gw.is_idle:
-                if self.units(basic_combat_unit).amount <= self.units(arial_combat_unit).amount:
-                    if self.can_afford(basic_combat_unit) and self.supply_left > 0:
-                        gw.train(basic_combat_unit)
         for sg in self.structures(combat_bldg_addon2_unitid).ready:
             if sg.is_idle:
                 if self.can_afford(arial_combat_unit) and self.supply_left > 0:
@@ -124,8 +164,7 @@ class Protoss(sc2.BotAI):
         basic_combat_unit = sc2.constants.STALKER
         arial_combat_unit = sc2.constants.VOIDRAY
 
-        aggressive_units = {sc2.constants.STALKER: [15,5],
-                            sc2.constants.VOIDRAY: [8,3]}
+        aggressive_units = {arial_combat_unit: [8,3]}
         for unit in aggressive_units:
             if self.units(unit).amount > aggressive_units[unit][0] and self.units(unit).amount > aggressive_units[unit][1]:
                 for s in self.units(unit).idle:
