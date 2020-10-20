@@ -203,7 +203,7 @@ class Protoss(sc2.BotAI):
         MAX_NO_TOWNHALLS = 3
         townhall_unitid = sc2.constants.NEXUS
         
-        if self.structures(townhall_unitid).amount < MAX_NO_TOWNHALLS and self.can_afford(townhall_unitid) and not self.already_pending(townhall_unitid):
+        if self.structures(townhall_unitid).amount < ((self.iteration / self.iterations_per_minute) / 2) and self.can_afford(townhall_unitid) and not self.already_pending(townhall_unitid):
             await self.expand_now()
 
 
