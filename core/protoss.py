@@ -259,13 +259,27 @@ class Protoss(sc2.BotAI):
         basic_combat_unit = sc2.constants.STALKER
         arial_combat_unit = sc2.constants.VOIDRAY
 
-        aggressive_units = {arial_combat_unit: [8,3]}
-        for unit in aggressive_units:
-            if self.units(unit).amount > aggressive_units[unit][0] and self.units(unit).amount > aggressive_units[unit][1]:
-                for s in self.units(unit).idle:
-                    s.attack(self.find_target(self.state))
-
-            elif self.units(unit).amount > aggressive_units[unit][1]:
-                if len(self.enemy_units) > 0:
-                    for s in self.units(unit).idle:
-                        s.attack(random.choice(self.enemy_units))
+        if len(self.units(arial_combat_unit).idle) > 0:
+            choice = random.randrange(0,4)
+            target = False
+            if self.iteration > self.do_something_after:
+                if choice == 0:
+                    #no attack
+                    wait = random.randrange(20,165)
+                    self.do_something_after = self.iteration + wait
+                elif choice == 1:
+                    if len(self.enemy_units) > 0:
+                        target = self.enemy_units.closest_to(random.choice(self.structures(townhall_unitid)))
+                elif choice == 2:
+                    if len(self.enemy_structures) > 0:
+                        target = random.choice(self.enemy_structures)
+                elif choice == 3:
+                    target = self.enemy_start_locations[0]
+                
+                if target:
+                    for vr in self.units(arial_combat_unit).idle:
+                        vr.attack(target)
+                y = np.zeros(4)
+                y[choice] = 1
+                print(y)
+                self.train_data.append([y,self.flipped])
