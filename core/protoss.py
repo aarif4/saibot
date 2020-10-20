@@ -2,6 +2,8 @@ import sc2
 import random
 import cv2 # pip install opencv-python
 import numpy as np
+import time
+import os
 
 
 class Protoss(sc2.BotAI):
@@ -15,6 +17,16 @@ class Protoss(sc2.BotAI):
         self.max_workers = 65
         self.do_something_after = 0
         self.train_data = []
+        self.HEADLESS = False # whether to show the simplified map or not
+
+    def on_end(self, game_result):
+        print('---on_end called---')
+        print(game_result)
+
+        if game_result == sc2.Result.Victory:
+            if not os.path.isdir('train_data'):
+                os.mkdir('train_data')
+            np.save("train_data/{}.npy".format(str(int(time.time()))), np.array(self.train_data))
 
     async def on_step(self, iteration: int):
         self.iteration = iteration
@@ -117,9 +129,11 @@ class Protoss(sc2.BotAI):
         cv2.line(game_data, (0, 3), (int(line_max*mineral_ratio), 3), (0, 255, 25), 3)  # minerals minerals/1500
 
         self.flipped = cv2.flip(game_data,0)
-        resized = cv2.resize(self.flipped, dsize=None, fx=2,fy=2)
-        cv2.imshow('Intel', resized)
-        cv2.waitKey(1)
+        
+        if not self.HEADLESS:
+            resized = cv2.resize(self.flipped, dsize=None, fx=2,fy=2)
+            cv2.imshow('Intel', resized)
+            cv2.waitKey(1)
     
 
     async def scout(self):
