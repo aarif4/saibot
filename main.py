@@ -7,7 +7,7 @@ from core.zerg import Zerg
 
 race = 2
 realtime = False
-difficulty=Difficulty.Hard
+difficulty=Difficulty.Easy
 if race == 1:
     run_game(maps.get("Abyssal Reef LE"), [
         Bot(Terran().get_race(), Terran()),
