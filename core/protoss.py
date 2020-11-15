@@ -17,7 +17,9 @@ class Protoss(sc2.BotAI):
         self.max_workers = 65
         self.do_something_after = 0
         self.train_data = []
-        self.HEADLESS = False # whether to show the simplified map or not
+        self.HEADLESS = True # whether to show the simplified map or not
+        self.scouting_candidates = None # will hold a list of sc2.position.Point2
+        self.scout_target = None # will hold index of the scouting_candidate we want to go to 
 
     def on_end(self, game_result):
         print('---on_end called---')
@@ -137,14 +139,36 @@ class Protoss(sc2.BotAI):
     
 
     async def scout(self):
+        # 1. if there's no scout, make a scout
+        # 2. if you have a scout, go to the following places in this priority
+        #    a. the enemy's start location
+        #    b. an unknown location
+        #       i. if the scout has reached an unknown location, go to the next unknown location
+        #       ii. if the scout has been to every unknown location, then start looking around again
         scout_unitid = sc2.constants.OBSERVER
         scout_bldg_unitid = sc2.constants.ROBOTICSFACILITY
+        min_dist_to_target = 5 # this is the min dist the scout needs to be before it can move on to the next point
 
+        if self.scouting_candidates is None:
+            self.scouting_candidates = self.enemy_start_locations + list(self.game_info.vision_blockers)
         if len(self.units(scout_unitid)) > 0:
             scout = self.units(scout_unitid)[0]
             if scout.is_idle:
-                enemy_location = self.enemy_start_locations[0]
-                move_to = self.ranodm_location_variance(enemy_location)
+                if self.scout_target is None:
+                    # if this is our first time, have the scout go to the first candidate locaiton
+                    self.scout_target = 0
+
+                # else, self.scout_target will keep increasing, go to the chosen candidate location
+                move_to = self.scouting_candidates[self.scout_target % len(self.scouting_candidates)]
+                
+                # if we've reached our candidate location,
+                if scout.distance_to(move_to) < min_dist_to_target:
+                    # time to move to the next candidate location. Will keep self.scout_target a bounded number so reduce chances of undefined behavior
+                    self.scout_target = (self.scout_target + 1) % len(self.scouting_candidates)
+                    # change the chosen candidate location to the new target
+                    move_to = self.scouting_candidates[self.scout_target % len(self.scouting_candidates)]
+
+                print('Sending scout to location', self.scout_target,'out of',len(self.scouting_candidates),':', move_to)
                 scout.move(move_to)
         else:
             for rf in self.structures(scout_bldg_unitid).ready:
