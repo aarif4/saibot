@@ -19,7 +19,12 @@ class Protoss(sc2.BotAI):
         self.train_data = []
         self.HEADLESS = True # whether to show the simplified map or not
         self.scouting_candidates = None # will hold a list of sc2.position.Point2
-        self.scout_target = None # will hold index of the scouting_candidate we want to go to 
+        self.scout_target_idx = None # will hold index of the scouting_candidate we want to go to 
+        self.scout_target_loc = None # will hold the sc2.position.Point2 that the scout is currently heading towards
+        self.scout_id = None #TODO: Use the scout ID to tell if they've died or not
+        self.scout_num_deaths = 0 # depending on how often a scout dies, we may want to increase our radius from the enemy
+        self.scout_saturated_iteration = None
+        self.scout_saturated_candidates = None
 
     def on_end(self, game_result):
         print('---on_end called---')
@@ -137,6 +142,71 @@ class Protoss(sc2.BotAI):
             cv2.imshow('Intel', resized)
             cv2.waitKey(1)
     
+    def sort_shortest_bitonic_tour(self):
+        # adapted from here: https://stackoverflow.com/questions/25552128/find-shortest-path-through-points-in-2d-plane
+        # basic idea:
+        # (Note that d[1,2] = dist(p1,p2))
+        # d[1,3] = d[1,2] + dist(p2,p3).
+        # d[i,j] = d[i,j-1] + dist(j-1,j) for i < j-1.
+        #
+        # Algorithmically:
+        # for k in range(j-2)
+        # d[j-1,j] = min( d[k,j-1] + dist(k,j) ) for 1 <= k < j-1
+        pass
+
+    def get_viable_scouting_candidates(self, min_dist_to_target):
+        # let's take inventory on where our supporting units are w.r.t the scouting candidate locations
+        # basically for each unknown location, find the closest unit/structure and see if the distance is less than min_dist_to_target
+        # we'll create a vector of the same length as self.scouting_candidates and will be toggled 0 if not a viable candidate location and 1 if it still is    
+        scouting_candidates_viability = np.ones(len(self.scouting_candidates))
+        for i in range(len(self.scouting_candidates)):
+            candidate = self.scouting_candidates[i]
+            # find closest unit's distance to candidate
+            unit_dist = self.units.closest_distance_to(candidate)
+            # find closest structure's distance to candidate
+            struct_dist = self.structures.closest_distance_to(candidate)
+            # this candidate location is still viable to scout IFF no structure or unit are "close enough" to it
+            scouting_candidates_viability[i] = struct_dist > min_dist_to_target and unit_dist > min_dist_to_target
+        
+        # return the indexes of the candidates that still needs to be scouted (can be empty!)
+        return list(np.where(scouting_candidates_viability == 1)[:][0])
+
+
+    def do_frantic_search(self):
+        # in 30 iterations, begin randomizing list of candidates and force to search every one of them
+        num_iterations_to_wait = 30
+
+        # if first time, set it equal to the current iteration value
+        if self.scout_saturated_iteration is None:
+            self.scout_saturated_iteration = self.iteration
+        
+        move_to = self.start_location
+        if self.iteration >= self.scout_saturated_iteration + num_iterations_to_wait:
+            # then it's time to randomize and go one by one
+            if self.scout_saturated_candidates is None or len(self.scout_saturated_candidates) == 0:
+                self.scout_saturated_candidates = self.scouting_candidates
+                random.shuffle(self.scout_saturated_candidates) # this will random reorganize the list
+            # choose where to go
+            move_to = self.scout_saturated_candidates[0]
+            self.scout_saturated_candidates.pop(0)
+
+        return move_to
+
+    def get_next_viable_scouting_candidate(self, viable_candidates):
+        self.scout_saturated_iteration = None # reset saturation counter
+
+        if all([vc < self.scout_target_idx for vc in viable_candidates]):
+            # means every viable candidate is an index lower than the current target candidate
+            # use the FIRST viable candidate in the list instead and break
+            self.scout_target_idx = viable_candidates[0]
+        else:
+            for vc in viable_candidates:
+                # we want to go to the NEXT candidate in the list that's at or past the current self.scout_target_idx's value/idx
+                if vc >= self.scout_target_idx:
+                    self.scout_target_idx = vc
+                    break # break out since we found the first occurance past our current target
+        
+        return self.scouting_candidates[self.scout_target_idx % len(self.scouting_candidates)]
 
     async def scout(self):
         # 1. if there's no scout, make a scout
@@ -147,30 +217,77 @@ class Protoss(sc2.BotAI):
         #       ii. if the scout has been to every unknown location, then start looking around again
         scout_unitid = sc2.constants.OBSERVER
         scout_bldg_unitid = sc2.constants.ROBOTICSFACILITY
-        min_dist_to_target = 5 # this is the min dist the scout needs to be before it can move on to the next point
+        min_dist_to_target = 10 # + self.scout_num_deaths # this is the min dist the scout needs to be before it can move on to the next point
+        max_dist_to_target = 30
+        dist_to_target = min_dist_to_target + self.scout_num_deaths
+        if dist_to_target > max_dist_to_target:
+            dist_to_target = max_dist_to_target # cap the maximum radius
 
+        # if this is empty make a list containing the enemy's starting location as well as other hidden locations
         if self.scouting_candidates is None:
-            self.scouting_candidates = self.enemy_start_locations + list(self.game_info.vision_blockers)
+            self.scouting_candidates = self.enemy_start_locations + list(self.expansion_locations_list)#list(self.game_info.vision_blockers)        
+        
+        # if this is the first time, set scout_target_idx to 0 so that it starts with the first candidate
+        if self.scout_target_idx is None:
+            self.scout_target_idx = 0
+        
+        # if first time, set scout_target_loc to a sc2.position.Point2 value
+        if self.scout_target_loc is None:
+            self.scout_target_loc = self.scouting_candidates[self.scout_target_idx % len(self.scouting_candidates)]
+        
         if len(self.units(scout_unitid)) > 0:
+            # get the scout that's alive
             scout = self.units(scout_unitid)[0]
-            if scout.is_idle:
-                if self.scout_target is None:
-                    # if this is our first time, have the scout go to the first candidate locaiton
-                    self.scout_target = 0
 
-                # else, self.scout_target will keep increasing, go to the chosen candidate location
-                move_to = self.scouting_candidates[self.scout_target % len(self.scouting_candidates)]
+            # if first time, save the scout's id
+            if self.scout_id is None:
+                self.scout_id = scout.tag
+            # if this a new scout spawn, increment the death count and update self.scout_id
+            if self.scout_id != scout.tag:
+                self.scout_num_deaths = self.scout_num_deaths + 1
+                self.scout_id = scout.tag
+
+            # get the indices of the candidates that still need to be explored
+            viable_candidates = self.get_viable_scouting_candidates(dist_to_target)
+            
+            if len(viable_candidates) == 0:
+                # means we have units/structures on every scouting candidate location
+                # go home and wait for a bit.
+                # if things are too peaceful, let's wait and then:
+                # 1. randomize list of scouting candidates
+                # 2. go over every scouting candidate
+                # 3. repeat 1. when you've reached the last candidate
+                move_to = self.do_frantic_search()
+                if move_to == self.scout_target_loc and not scout.is_idle:
+                    # scout is already moving to that target, ignore it
+                    pass
+                else:
+                    if move_to == self.start_location:
+                        print('SATURATED STATE | Sending scout back to home base while we wait 30 iterations :', move_to)
+                    else:
+                        print('SATURATED STATE | Sending scout to the following random location :', move_to)
+                    self.scout_target_loc = move_to
+                    scout.move(move_to)
                 
-                # if we've reached our candidate location,
-                if scout.distance_to(move_to) < min_dist_to_target:
-                    # time to move to the next candidate location. Will keep self.scout_target a bounded number so reduce chances of undefined behavior
-                    self.scout_target = (self.scout_target + 1) % len(self.scouting_candidates)
-                    # change the chosen candidate location to the new target
-                    move_to = self.scouting_candidates[self.scout_target % len(self.scouting_candidates)]
+            elif len(viable_candidates) != 0 and scout.is_idle:
+                # means the scout needs to go to the next viable scouting candidate
+                # based on the list of viable scouting candidates, find one that has an idx greater than the current target candidate's idx
+                # - if there is one, go to that
+                # - else, loop back to the start and go to the first viable scouting candidate
+                move_to = self.get_next_viable_scouting_candidate(viable_candidates)
+                print('   IDLE STATE   | Sending scout to location', self.scout_target_idx,'out of',len(self.scouting_candidates),':', move_to)
+                self.scout_target_loc = move_to
+                scout.move(move_to)
 
-                print('Sending scout to location', self.scout_target,'out of',len(self.scouting_candidates),':', move_to)
+            elif self.scout_target_loc is not None and scout.distance_to(self.scout_target_loc) < dist_to_target:
+                # means the scout is moving and has reached the threshold to the target candidate location
+                # time to pivot before they get blasted
+                move_to = self.get_next_viable_scouting_candidate(viable_candidates)
+                print('  MOVING STATE  | Sending scout to location', self.scout_target_idx,'out of',len(self.scouting_candidates),':', move_to)
+                self.scout_target_loc = move_to
                 scout.move(move_to)
         else:
+            # train a scout first
             for rf in self.structures(scout_bldg_unitid).ready:
                 if rf.is_idle:
                     if self.can_afford(scout_unitid) and self.supply_left > 0:
