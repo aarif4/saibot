@@ -29,6 +29,8 @@ from sc2 import run_game, maps, Race, Difficulty
 from sc2.player import Bot, Computer
 import core
 
+MAX_ITER = 1 # maximum number of times to run simulation
+
 def run_simulation():
     """
     This function simply runs the StarCraft API and simulate a game with
@@ -103,4 +105,5 @@ def class_exists(class_name):
 
 
 if __name__ == "__main__":
-    run_simulation()
+    for i in range(MAX_ITER):
+        run_simulation()
