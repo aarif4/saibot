@@ -29,7 +29,7 @@ from sc2 import run_game, maps, Race, Difficulty
 from sc2.player import Bot, Computer
 import core
 
-MAX_ITER = 1 # maximum number of times to run simulation
+MAX_ITER = 100 # maximum number of times to run simulation
 
 def run_simulation():
     """
@@ -106,4 +106,5 @@ def class_exists(class_name):
 
 if __name__ == "__main__":
     for i in range(MAX_ITER):
+        print('=== Running Starcraft II Trial #%d (out of %d)' % (i+1, MAX_ITER))
         run_simulation()
