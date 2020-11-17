@@ -4,6 +4,7 @@ import cv2 # pip install opencv-python
 import numpy as np
 import time
 import os
+import tensorflow as tf # get keras like so: tf.keras
 
 
 class Protoss(sc2.BotAI):
@@ -17,7 +18,7 @@ class Protoss(sc2.BotAI):
         self.max_workers = 65
         self.do_something_after = 0
         self.train_data = []
-        self.HEADLESS = True # whether to show the simplified map or not
+        self.HEADLESS = False # whether to show the simplified map or not
         self.scouting_candidates = None # will hold a list of sc2.position.Point2
         self.scout_target_idx = None # will hold index of the scouting_candidate we want to go to 
         self.scout_target_loc = None # will hold the sc2.position.Point2 that the scout is currently heading towards
@@ -25,12 +26,16 @@ class Protoss(sc2.BotAI):
         self.scout_num_deaths = 0 # depending on how often a scout dies, we may want to increase our radius from the enemy
         self.scout_saturated_iteration = None
         self.scout_saturated_candidates = None
+        self.use_model = True # tells whether to randomly choose what to do or 
+        if self.use_model:
+            print("Using model")
+            self.model = tf.keras.models.load_model("../build/BasicCNN-10-epochs-0.0001-LR-STAGE1")
 
     def on_end(self, game_result):
         print('---on_end called---')
         print(game_result)
 
-        if game_result == sc2.Result.Victory:
+        if game_result == sc2.Result.Victory and not self.use_model:
             if not os.path.isdir('train_data'):
                 os.mkdir('train_data')
             np.save("train_data/{}.npy".format(str(int(time.time()))), np.array(self.train_data))
@@ -415,7 +420,16 @@ class Protoss(sc2.BotAI):
         arial_combat_unit = sc2.constants.VOIDRAY
 
         if len(self.units(arial_combat_unit).idle) > 0:
-            choice = random.randrange(0,4)
+            if self.use_model:
+                prediction = self.model.predict(self.flipped.reshape([-1, 176, 200, 3]))
+                choice = np.argmax(prediction[0])
+                choice_dict = { 0: "No attack!",
+                                1: "Attack close to our nexus!",
+                                2: "Attack enemy structures!",
+                                3: "Attack enemy start location!"}
+                print("Choice #{}:{}".format(choice,choice_dict[choice]))
+            else:
+                choice = random.randrange(0,4)
             target = False
             if self.iteration > self.do_something_after:
                 if choice == 0:
