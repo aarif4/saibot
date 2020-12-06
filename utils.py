@@ -81,12 +81,18 @@ class config_data():
         test
         """
         self.cfg['sim_setup'] = {
+            'map_name':'Abyssal Reef LE',
             'num_iterations': 1,
             'run_realtime': False
         }
 
         # start parsing
         if cfg and 'sim_setup' in cfg:
+            self.check_map_field(
+                cfg,
+                'sim_setup',
+                'map_name',
+                False)
             self.check_integer_field(
                 cfg,
                 'sim_setup',
@@ -545,6 +551,38 @@ class config_data():
                 '[%s]\'s "%s" field\'s JSON string could not be parsed successfully. Cannot run!',
                 section_name,
                 field_name)
+            raise exp
+
+    def check_map_field(self, cfg, section_name, field_name, required):
+        """
+        cfg:            is configparser object
+        section_name:   string
+        field_name:     string
+        required:       bool to force that field_name exist
+        """
+        try:
+            self.cfg[section_name][field_name] = cfg[section_name][field_name].strip("'").strip('"')
+        except KeyError as exp:
+            if not required:
+                self.logger.warning(
+                    '[%s]\'s "%s" field doesn\'t exist. Using default value "%s"',
+                    section_name,
+                    field_name,
+                    self.cfg[section_name][field_name])
+            else:
+                self.logger.error(
+                    '[%s]\'s "%s" field doesn\'t exist. Must be a valid StarCraft II map name. Cannot run!',
+                    section_name,
+                    field_name)
+                raise exp
+        try:
+            val = sc2.maps.get(self.cfg[section_name][field_name])
+        except KeyError as exp:
+            self.logger.error(
+                '[%s]\'s "%s" field value ("%s") is NOT a valid StarCraft II map name. Cannot run!',
+                section_name,
+                field_name,
+                self.cfg[section_name][field_name])
             raise exp
 
     def __str__(self):
