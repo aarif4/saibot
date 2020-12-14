@@ -244,7 +244,7 @@ class config_data():
                 cfg,
                 'model_setup',
                 'save_dir',
-                True,
+                self.cfg['model_setup']['gen_model'],
                 '{}/{}'.format('models', self.todays_date_and_time_str),
                 False) # should not already exist
             self.check_json_field(
@@ -492,7 +492,8 @@ class config_data():
                 self.cfg[section_name][field_name] = \
                     "{}/{}".format(self.cfg[section_name][field_name], subfolder)
 
-            os.makedirs(self.cfg[section_name][field_name])
+            if required and not os.access(self.cfg[section_name][field_name], os.F_OK):
+                os.makedirs(self.cfg[section_name][field_name])
         except KeyError as exp:
             if not required:
                 self.logger.warning(
