@@ -9,19 +9,20 @@ import sys
 import json
 import logging
 from termcolor import colored
+import copy
 
 class ENEMY_MODE(enum.Enum):
     COMPUTER    = 0 # DEFAULT
     #DNN         = 1 # Unused
 
 
-class PLAYER_MODE(enum.Enum): # list(PLAYER_MODE.__members__)[0]
+class BOT_MODE(enum.Enum): # list(BOT_MODE.__members__)[0]
     RULE_BASED  = 0 # DEFAULT
     RANDOM      = 1
     DNN         = 2
 
 
-def build_logger(log_name):
+def build_logger(log_name, fatal_name='FATAL'):
     # R,G,B,Y,M,C,W
     # "DEBUG" C
     # "INFO " G
@@ -32,7 +33,7 @@ def build_logger(log_name):
     logging.addLevelName(logging.INFO,colored('INFO ','green'))
     logging.addLevelName(logging.WARNING,colored('WARN ','yellow'))
     logging.addLevelName(logging.ERROR,colored('ERROR','red'))
-    logging.addLevelName(logging.FATAL,colored('FATAL','magenta'))
+    logging.addLevelName(logging.FATAL,colored(fatal_name,'magenta'))
     #
     log_lvl = logging.DEBUG
     log = logging.getLogger(log_name)
@@ -44,12 +45,12 @@ def build_logger(log_name):
     ch.setFormatter(fmt)
     log.addHandler(ch)
     #
-    return log
+    return log, ch
 
 
 class config_data():
     def __init__(self, filename=''):
-        self.logger = build_logger('config_data')
+        self.logger, _ = build_logger('config_data')
 
         self.todays_date_and_time_str = None
         self.get_todays_date_and_time()
@@ -111,7 +112,7 @@ class config_data():
         test
         """
         self.cfg['player_bot'] = {
-            'mode':PLAYER_MODE.RULE_BASED,  # REQUIRED
+            'mode':BOT_MODE.RULE_BASED,  # REQUIRED
             'race': sc2.Race.Protoss,       # REQUIRED
             'model_location': '',
             'save_training_data': False,
@@ -128,7 +129,7 @@ class config_data():
                 'player_bot',
                 'mode',
                 'upper',
-                'PLAYER_MODE',
+                'BOT_MODE',
                 True)
             self.check_enum_field(
                 cfg,
@@ -141,7 +142,7 @@ class config_data():
                 cfg,
                 'player_bot',
                 'model_location',
-                self.cfg['player_bot']['mode'] in [PLAYER_MODE.DNN],
+                self.cfg['player_bot']['mode'] in [BOT_MODE.DNN],
                 '',
                 True) # already exists
             self.check_bool_field(
@@ -335,10 +336,18 @@ class config_data():
         required:       bool to force that field_name to exist
         """
         try:
-            self.cfg[section_name][field_name] = \
-                eval(
-                    '%s[cfg[section_name][field_name].strip(\"\'\").strip(\'\"\').%s()]' \
-                        % (enum_class_str, change_fmt))
+            cfg_val = cfg[section_name][field_name].strip("'").strip('"')
+
+            good_vals = eval('list(%s.__members__)' % (enum_class_str,))
+            good_lowercase_vals = \
+                [a.lower() for a in good_vals]
+            val_idx = [idx for idx,val in enumerate(good_lowercase_vals) if cfg_val.lower() == val]
+            if val_idx:
+                idx = val_idx[0]
+                self.cfg[section_name][field_name] = \
+                    eval('%s["%s"]' % (enum_class_str, good_vals[idx]))
+            else:
+                raise KeyError
         except KeyError as exp: # field does not exist in cfg
             if not required:
                 self.logger.warning(
@@ -592,7 +601,7 @@ class config_data():
             ['enemy_bot','mode'],
             ['enemy_bot','race'],
             ['enemy_bot','computer_difficulty']]
-        cfg_str = self.cfg
+        cfg_str = copy.deepcopy(self.cfg)
         for val in enum_locs:
             i = val[0]
             j = val[1]
