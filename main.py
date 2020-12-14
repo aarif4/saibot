@@ -114,7 +114,6 @@ if __name__ == "__main__":
     logger.info('Configuration file contents:\n%s', user_data)
 
     # run the requested number of trials (>0) and report the winrate
-    num_wins = float(0)
     win_loss = []
     time_taken_min = []
     num_trials = user_data.cfg['sim_setup']['num_iterations']
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     logger.info("=================================")
     logger.info("Done Running StarCraft II Trials!")
     logger.info("=================================")
-    logger.info("Win Rate: %d/%d: %.2f%%", num_wins, num_trials, sum(win_loss)/num_trials*100)
+    logger.info("Win Rate: %d/%d: %.2f%%", sum(win_loss), num_trials, sum(win_loss)/num_trials*100)
     logger.info('Total Time Taken for %d Trials:  %.4f hours (%.4f min)', \
         num_trials, sum(time_taken_min)/24, sum(time_taken_min))
     logger.info('Avg. Time Taken Per Trial:       %.4f minutes', sum(time_taken_min)/num_trials)
